@@ -1,0 +1,53 @@
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import os
+
+def analyze_attention_interference(seq_len, d_model, num_heads):
+    """
+    Simulates a Multi-Head Attention layer and measures interference between tokens.
+    """
+    query_layer = nn.Linear(d_model, d_model)
+    key_layer = nn.Linear(d_model, d_model)
+    
+    # Random input (batch_size=1)
+    x = torch.randn(1, seq_len, d_model)
+    
+    Q = query_layer(x) # (1, seq_len, d_model)
+    K = key_layer(x)   # (1, seq_len, d_model)
+    
+    # Reshape for multi-head
+    Q = Q.view(1, seq_len, num_heads, d_model // num_heads).transpose(1, 2)
+    K = K.view(1, seq_len, num_heads, d_model // num_heads).transpose(1, 2)
+    
+    # QK^T (1, num_heads, seq_len, seq_len)
+    attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (d_model // num_heads)**0.5
+    
+    # Interference metric in attention:
+    # Mean off-diagonal absolute value vs Mean diagonal
+    diag = torch.diagonal(attention_scores, dim1=-2, dim2=-1)
+    S_att = torch.mean(torch.abs(diag)).item()
+    
+    mask = torch.eye(seq_len).bool()
+    off_diag = attention_scores[:, :, ~mask]
+    I_att = torch.mean(torch.abs(off_diag)).item()
+    
+    return S_att, I_att, I_att / S_att if S_att > 0 else float('inf')
+
+def main():
+    seq_len = 32
+    d_model = 128
+    heads = [1, 2, 4, 8, 16]
+    
+    results = []
+    for h in heads:
+        S, I, ratio = analyze_attention_interference(seq_len, d_model, h)
+        results.append({"heads": h, "S": S, "I": I, "ratio": ratio})
+        
+    print("--- Transformer Attention Interference Analysis ---")
+    print(f"Seq Len: {seq_len}, Model Dim: {d_model}")
+    for res in results:
+        print(f"Heads: {res['heads']:2d} | Signal: {res['S']:.4f} | Interference: {res['I']:.4f} | Ratio: {res['ratio']:.4f}")
+
+if __name__ == "__main__":
+    main()
