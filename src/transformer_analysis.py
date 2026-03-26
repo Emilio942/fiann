@@ -3,6 +3,12 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import os
 
+def calculate_entropy(scores):
+    # Normalized scores for entropy
+    probs = torch.abs(scores) / (torch.sum(torch.abs(scores)) + 1e-9)
+    entropy = -torch.sum(probs * torch.log(probs + 1e-9))
+    return entropy.item()
+
 def analyze_attention_interference(seq_len, d_model, num_heads):
     """
     Simulates a Multi-Head Attention layer and measures interference between tokens.
@@ -24,7 +30,6 @@ def analyze_attention_interference(seq_len, d_model, num_heads):
     attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (d_model // num_heads)**0.5
     
     # Interference metric in attention:
-    # Mean off-diagonal absolute value vs Mean diagonal
     diag = torch.diagonal(attention_scores, dim1=-2, dim2=-1)
     S_att = torch.mean(torch.abs(diag)).item()
     
@@ -32,7 +37,10 @@ def analyze_attention_interference(seq_len, d_model, num_heads):
     off_diag = attention_scores[:, :, ~mask]
     I_att = torch.mean(torch.abs(off_diag)).item()
     
-    return S_att, I_att, I_att / S_att if S_att > 0 else float('inf')
+    # Advanced: Interference Entropy H_I (Question 5)
+    H_I = calculate_entropy(off_diag)
+    
+    return S_att, I_att, I_att / S_att if S_att > 0 else float('inf'), H_I
 
 def main():
     seq_len = 32
@@ -41,13 +49,13 @@ def main():
     
     results = []
     for h in heads:
-        S, I, ratio = analyze_attention_interference(seq_len, d_model, h)
-        results.append({"heads": h, "S": S, "I": I, "ratio": ratio})
+        S, I, ratio, entropy = analyze_attention_interference(seq_len, d_model, h)
+        results.append({"heads": h, "S": S, "I": I, "ratio": ratio, "entropy": entropy})
         
     print("--- Transformer Attention Interference Analysis ---")
     print(f"Seq Len: {seq_len}, Model Dim: {d_model}")
     for res in results:
-        print(f"Heads: {res['heads']:2d} | Signal: {res['S']:.4f} | Interference: {res['I']:.4f} | Ratio: {res['ratio']:.4f}")
+        print(f"Heads: {res['heads']:2d} | Signal: {res['S']:.4f} | Interference: {res['I']:.4f} | Ratio: {res['ratio']:.4f} | Entropy: {res['entropy']:.4f}")
 
 if __name__ == "__main__":
     main()
